@@ -1776,7 +1776,7 @@ def ElementLife(n, ia0, ia, σ, τ_max,FieldValues,S_cyc_result, S_ai_result):
 global SlipPlane, π, makeCDF, makeCDFr, makeCDFrA, makeEulerAngles
 
 π = np.pi
-def SlipPlane(ang, DeltaSigma):#滑移面计算
+def SlipPlane(ang, DeltaSigma):
     # ang: Euler angles of the grain
     # DeltaSigma: stress tensor range
 
@@ -1844,7 +1844,7 @@ def stressAE(σ_nom, i,FieldValues):#Stress tensor of AREA ELEMENT at a specific
         Δσ = np.array([[σ_11, τ_12, τ_13], [τ_12, σ_22, τ_23], [τ_13, τ_23, σ_33]])
 
         eigenvalues = np.linalg.eigvals(Δσ)
-        τ_max = (max(eigenvalues) - min(eigenvalues)) / 2.0#（最大主应力-最小主应力）/2
+        τ_max = (max(eigenvalues) - min(eigenvalues)) / 2.0
         return list([i, Δσ, τ_max])
 #Part7 End
 #
