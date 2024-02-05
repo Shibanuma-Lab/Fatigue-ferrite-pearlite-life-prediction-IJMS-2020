@@ -38,7 +38,7 @@ class BasicParameters:
     def __init__(self):
         os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-        # Initialize all parameter
+        # Initialize all parameters
         self.name = os.path.basename(os.getcwd()) # The name of the specimen
         self.steel = self.name.split("_")[:2][0] # The steel type of the specimen
         self.type = self.name.split("_")[:2][1] # The type of the test
