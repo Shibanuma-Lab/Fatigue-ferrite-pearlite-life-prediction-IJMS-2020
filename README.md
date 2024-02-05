@@ -8,8 +8,6 @@ This code predicts the fatigue life and limit of steels using microstructure inf
 * **Python 3.10**: Necessary for running the simulation. Download Python 3.10 from [here](https://www.python.org/downloads/).
   * The following libraries are also required: `os`, `re`, `math`, `random`, `pickle`, `numpy`, `pandas`, `datetime`, and `scipy`. Install these libraries using the command:
     `pip install os re math random pickle numpy pandas datetime scipy`
-    - Note: Libraries like `os`, `re`, `math`, and `datetime` are part of the Python Standard Library and do not need installation via pip. The correct command should only include libraries that can be installed through pip: 
-    `pip install random pickle numpy pandas scipy`
 
 # Structure of the Code
 1. **Basic Information Import** (class: `BasicParameters`)
