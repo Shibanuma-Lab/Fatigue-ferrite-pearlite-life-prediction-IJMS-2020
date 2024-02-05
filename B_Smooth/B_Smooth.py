@@ -13,7 +13,8 @@ from scipy.interpolate import interp1d # The scipy library is used to perform in
 from scipy.interpolate import LinearNDInterpolator # The scipy library is used to perform interpolation
 from scipy.optimize import brentq
 from itertools import groupby
-
+import warnings 
+warnings.filterwarnings("ignore", category=np.RankWarning)
 
 ###############################################STRUCTURE OF THE MODEL###############################################
 # 1. Basic information import (class: BasicParameters)
@@ -22,8 +23,7 @@ from itertools import groupby
 # 4. Creat Field value function (class: FieldValuesFunction)
 # 5. Life evaluation for single crack (fuction: CrackLifeCalc)
 # 6. Life evaluation for sigle area element (fuction: ElementLife)
-# 7. Global functions
-# 8. Execution of the model
+# 7. Execution of the model
 ###############################################STRUCTURE OF THE MODEL###############################################
 
 
@@ -53,8 +53,8 @@ class BasicParameters:
         self.remote_type = 1 #Remote stress conversion type
 
         #life calculation
-        self.c_paris = 11.8 #Paris law coefficient
-        self.n_paris = 2.0 #Paris law exponent
+        self.c_paris = 11.8 #Paris'law coefficient
+        self.n_paris = 2.0 #Paris'law exponent
         self.Δδ_th = 0.000145 #threshold for crack-tip sliding displacement range
 
         #specimen dimentions
@@ -81,7 +81,10 @@ class BasicParameters:
         self.eval_points_full= None #Position of evaluation points(stage1+stage2)
         self.eval_points_stage1 = None #Position of evaluation points in Stage I (within first grains)
         self.eval_points_stage2 = None #Position of evaluation points in Stage II (outside the first grains)
-       
+
+  
+
+
         #call fuctions
         self.specimen_dimentions()
         self.active_zone()
@@ -203,8 +206,47 @@ class BasicParameters:
                            1.6, 1.7, 1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1, 3.2, 3.3, 3.4, 3.5, \
                            3.6, 3.7, 3.8, 3.9, 4.0, 4.1, 4.2, 4.3, 4.4]      
                 }.get(self.type)
-        self.eval_num_stage2 = len(self.eval_points_stage2) + 2 #改
+        self.eval_num_stage2 = len(self.eval_points_stage2) + 2 
         self.eval_num_total = self.eval_num_stage1 + self.eval_num_stage2
+
+    def SlipPlane(self, ang, DeltaSigma):
+        # ang: Euler angles of the grain
+        # DeltaSigma: stress tensor range
+
+        nv = np.array([[[1., 1., 0.], [1., -1., 1.], [-1., 1., 1.]],
+                    [[1., -1., 0.], [1., 1., 1.], [-1., -1., 1.]],
+                    [[1., 0., 1.], [1., 1., -1.], [-1., 1., 1.]],
+                    [[-1., 0., 1.], [-1., 1., -1.], [1., 1., 1.]],
+                    [[0., 1., 1.], [1., 1., -1.], [1., -1., 1.]],
+                    [[0., 1., -1.], [1., 1., 1.], [1., -1., -1.]]])
+        C_Psi, C_Theta, C_Phi = np.cos(ang)
+        S_Psi, S_Theta, S_Phi = np.sin(ang)
+            
+        g_Psi_Theta_Phi = np.array([                            # Rotation matrix
+            [C_Psi*C_Theta*C_Phi - S_Psi*S_Phi, S_Psi*C_Theta*C_Phi + C_Psi*S_Phi, -S_Theta*C_Phi],
+            [-C_Psi*C_Theta*S_Phi - S_Psi*C_Phi, -S_Psi*C_Theta*S_Phi + C_Psi*C_Phi, S_Theta*S_Phi],
+            [C_Psi*S_Theta, S_Psi*S_Theta, C_Theta]
+            ])
+
+        nv2 = np.array([list(map(lambda x: g_Psi_Theta_Phi.dot(x), sublist)) for sublist in nv])# 
+
+        tau_list = []
+        for i in range(6):
+            for j in range(2):
+                tau = abs(np.dot(np.dot(nv2[i, 0], DeltaSigma), nv2[i, j + 1]))
+                tau_list.append((tau, i, j))
+        
+        tau_list.sort(key=lambda x: x[0], reverse=True)
+        i0, j0 = tau_list[0][1], tau_list[0][2]
+        
+        max_shear_stress = 1.0 / np.sqrt(6) * tau_list[0][0] 
+        max_principal_stress_dir = 1.0 / np.sqrt(2) * np.sign(nv2[i0, 0, 0]) * nv2[i0, 0]
+        max_theta_n = 1.0 / np.sqrt(3) * np.sign(nv2[i0, 0, 0]) * nv2[i0, j0 + 1]
+
+        return max_shear_stress, np.array(max_principal_stress_dir), np.array(max_theta_n)
+        
+    def makeEulerAngles(self):#
+        return ([random.uniform(0, 2 * np.pi), math.acos(random.uniform(-1, 1)), random.uniform(0, 2 * np.pi)])
 #Part1 End
 #
 #
@@ -262,7 +304,7 @@ class AbaqusDatabaseCreator:
         elastic = [i for i, line in enumerate(self.inp_data) if "*Elastic" in line][0]
         values_line = self.inp_data[elastic + 1].split(",")
         self.E, self.ν = map(float, values_line)
-        self.AA = self.E / (4 * π * (1 - self.ν ** 2))
+        self.AA = self.E / (4 * np.pi * (1 - self.ν ** 2))
 
     #Model information
     def read_inp(self):
@@ -273,7 +315,7 @@ class AbaqusDatabaseCreator:
             a0 = np.array(inst[1][:3])   
             a1 = np.array(inst[1][3:6])  
             axis = (a1 - a0) / np.linalg.norm(a1 - a0) 
-            phi = π * inst[1][-1] / 180
+            phi = np.pi * inst[1][-1] / 180
             def rformula(xyz):
                 r = xyz - a0
                 return r * np.cos(phi) + axis * (np.dot(axis, r)) * (1 - np.cos(phi)) + np.cross(axis, r) * np.sin(phi)
@@ -512,7 +554,7 @@ class AbaqusDatabaseCreator:
         with open(pkl_file_name, 'wb') as file:
             pickle.dump(data_to_save, file)
 
-        return print("Complete Definition of FieldValues Function :", datetime.now())
+        return print("Complete Definition of FieldValues Function :", datetime.datetime.now())
 #Part2 End
 #
 #
@@ -539,16 +581,16 @@ class MaterialDataImporter:
         self.PearliteDF = pd.read_csv(self.pearlite_thickness_files[0], header=None).to_numpy()
 
         # distribution fraction
-        self.PearliteCDF = makeCDF(self.PearliteDF)
-        self.FerriteCDF = makeCDF(self.FerriteDF)
-        self.FerriteCDFr = makeCDFr(self.FerriteDF)
-        self.PearliteCDFr = makeCDFr(self.PearliteDF)
-        self.FerriteAspectCDFr = makeCDFrA(self.FerriteAspectDF)
+        self.PearliteCDF = self.makeCDF(self.PearliteDF)
+        self.FerriteCDF = self.makeCDF(self.FerriteDF)
+        self.FerriteCDFr = self.makeCDFr(self.FerriteDF)
+        self.PearliteCDFr = self.makeCDFr(self.PearliteDF)
+        self.FerriteAspectCDFr = self.makeCDFrA(self.FerriteAspectDF)
 
         # Ferrite average and maximum grain size
         self.dave = sum(item[0] ** 3 * item[1] for item in self.FerriteDF) / sum(item[0] ** 2 * item[1] for item in self.FerriteDF)
         self.dmax = self.FerriteCDF(1)
-        self.ngAe = (4 * self.BasicParams.active_element_area) / (π * self.dave**2)
+        self.ngAe = (4 * self.BasicParams.active_element_area) / (np.pi * self.dave**2)
 
         # Import Ferrite grain aspect ratio distribution from csv file
         self.FerriteAspectDF = pd.read_csv(self.BasicParams.steel + "_Ferrite grain aspect ratio.csv", header=None).to_numpy()
@@ -611,7 +653,23 @@ class MaterialDataImporter:
         self.CreateGrainData()
         self.ModelSize()
 
+    #CDF function
+    def makeCDF(self, DF): #  Definition of the function makeCDF to calculate the cumulative distribution function of particle size
+        CDF0 = np.cumsum(DF[:, 1])
+        CDF = CDF0 * 0.99999 + np.arange(len(DF)) / len(DF) * 0.00001
+        return interp1d(CDF, DF[:, 0], kind='linear', fill_value='extrapolate')
 
+    def makeCDFr(self, DF): #  Definition of the function makeCDF to calculate the cumulative distribution function of particle size
+        CDF0 = np.cumsum(DF[:, 1])
+        CDF = CDF0 * 0.99999 + np.arange(len(DF)) / len(DF) * 0.00001
+        return interp1d(CDF, np.sqrt(np.pi) / 2. * DF[:, 0], kind='linear', fill_value='extrapolate')
+
+    def makeCDFrA(self, DF):
+        CDF0 = np.cumsum(DF[:, 1])
+        CDF = CDF0 * 0.99999 + np.arange(len(DF)) / len(DF) * 0.00001
+        RA = np.sqrt(DF[:, 0])
+        return interp1d(CDF, RA, kind='linear', fill_value='extrapolate')
+    
     #Volume fraction of pearlite
     def pearlite_fraction(self):
         pattern = re.compile(r"(\d+\.\d+)") 
@@ -660,7 +718,7 @@ class MaterialDataImporter:
         self.EES = data['EES']
         self.PES = data['PES']
         self.AES = data['AES']
-        print("Complete Reading ABAQUS FieldValues Function from pkl File :", datetime.now())
+        print("Complete Reading ABAQUS FieldValues Function from pkl File :", datetime.datetime.now())
     
 
     #Weight function
@@ -737,15 +795,15 @@ class MaterialDataImporter:
         if os.path.exists(self.BasicParams.steel + "_"+ self.BasicParams.type + "_gData.pkl"):
             with open(self.BasicParams.steel + "_"+ self.BasicParams.type + "_gData.pkl", "rb") as file:
                 self.gData = pickle.load(file)
-                print("Finish loading gData.pkl", datetime.now())
+                print("Finish loading gData.pkl", datetime.datetime.now())
         else:
-            print("Start generating gData.pkl", datetime.now())
+            print("Start generating gData.pkl", datetime.datetime.now())
             nData = 1000000
             R = np.random.rand(3, nData) 
             dtrList = [[row[0], self.FerriteCDFr(row[2]), self.PearliteCDFr(row[2]), self.FerriteAspectCDFr(row[1])] for row in R.T]
 
             self.gData = list(map(lambda x: makegList(*x), dtrList))#Generate a list of nData grains (containing ferite and pearlite)
-            print("Finish generating gData.pkl", datetime.now())
+            print("Finish generating gData.pkl", datetime.datetime.now())
 
             with open(self.BasicParams.steel + "_"+ self.BasicParams.type + "_gData.pkl", "wb") as file:
                 pickle.dump((self.gData), file)
@@ -946,7 +1004,7 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
         g_List = np.array([[DataImport.σ_fF, r1, rt1]] + [random.choice(DataImport.gData) for _ in range(DataImport.Ng)])
         σ_f_List, dnList, tnList = g_List[:, 0], g_List[:, 1], g_List[:, 2]
 
-        orList = [or1] + [makeEulerAngles() for _ in range(DataImport.Ng)]# 改
+        orList = [or1] + [BasicParams.makeEulerAngles() for _ in range(DataImport.Ng)]# 改
 
         rnList = [0] * DataImport.Mg  
         Nd = [0] *DataImport. Mg   
@@ -1107,7 +1165,7 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
                 term1 = 2 * a * σ_fr[0] * np.log(c / a)
         
             term2 =  sum((σ_fr[i + 1] - σ_fr[i]) * gg(a, c, rnList_L[i]) for i in range(n+1))
-            result = Δτ_j / (π ** 2 * DataImport.AA) * (term1 + term2)
+            result = Δτ_j / (np.pi ** 2 * DataImport.AA) * (term1 + term2)
             return result
         #----------------------------------------------sub_function__END------------------------------------------------
 
@@ -1121,7 +1179,7 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
         E_σ =  np.linalg.eigvals(Δσ)
         τ_max=(max(E_σ)-min(E_σ))/2
         if jj == 0:
-            τ1, θn1, θs1 = SlipPlane(orList[0], Δσ)
+            τ1, θn1, θs1 = BasicParams.SlipPlane(orList[0], Δσ)
 
             t_List = [ [] for _ in range(DataImport.Mg) ]
             τ_List = [ [] for _ in range(DataImport.Mg) ]
@@ -1130,7 +1188,7 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
             τ_List[0] = [τ1]
             σ_fr[0] = DataImport.σ_fF / τ1
         else:
-            τ_t2_temp = [SlipPlane(orList[N0 +1+ item[1]], Δσ) for item in PnList[jj]]
+            τ_t2_temp = [BasicParams.SlipPlane(orList[N0 +1+ item[1]], Δσ) for item in PnList[jj]]
             τ_t2 = [list(t) for t in zip(*τ_t2_temp)]
 
             σ_f0 = [σ_f_List[N0 +1+ item[1]] for item in PnList[jj]]
@@ -1164,7 +1222,7 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
                 PnList1 = PnList_1_2[:, 0].tolist()
                 PnList2 = PnList_1_2[:, 1].tolist()
 
-                τ_t0_temp = [SlipPlane(orList[N0+1 + PnList2[i]], t_List[m][PnList1[i]]) for i in range(len(PnList1))]
+                τ_t0_temp = [BasicParams.SlipPlane(orList[N0+1 + PnList2[i]], t_List[m][PnList1[i]]) for i in range(len(PnList1))]
                 τ_t0 = [list(t) for t in zip(*τ_t0_temp)]
                 τ0 = τ_t0[0]
                 t0 = [tau_t0_0 * np.outer(tau_t0_1, tau_t0_2) for tau_t0_0, tau_t0_1, tau_t0_2 in zip(*τ_t0)] 
@@ -1219,7 +1277,7 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
                     PnList1 = PnList_1_2[:, 0].tolist()
                     PnList2 = PnList_1_2[:, 1].tolist()
 
-                    τ_t0_temp = [SlipPlane(orList[N0+1 + PnList2[i]], t_List[m][PnList1[i]]) for i in range(len(PnList1))]
+                    τ_t0_temp = [BasicParams.SlipPlane(orList[N0+1 + PnList2[i]], t_List[m][PnList1[i]]) for i in range(len(PnList1))]
 
 
                     τ_t0 = [list(t) for t in zip(*τ_t0_temp)]
@@ -1356,7 +1414,7 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
 
                     αα = 3 # Plastic constraint factor 3, coefficient in plane strain state.
                     r_σ = σ_max / DataImport.σ_0 if σ_max <= DataImport.σ_0 else 1   
-                    A0 = (0.825 - 0.34 * αα + 0.05 * αα**2) * (np.cos(π / 2 * r_σ))**(1 / αα)
+                    A0 = (0.825 - 0.34 * αα + 0.05 * αα**2) * (np.cos(np.pi / 2 * r_σ))**(1 / αα)
                     A1 = (0.415 - 0.071 * αα) * r_σ
                     A3 = 2 * A0 + A1 - 1
                     A2 = 1 - A0 - A1 - A3
@@ -1696,7 +1754,7 @@ def ElementLife(n, ia0, ia, σ, τ_max,FieldValues,S_cyc_result, S_ai_result):
 
     #generateFoList
     def generateFoList():
-        FoList = [makeEulerAngles() for _ in range(FNum)]#
+        FoList = [BasicParams.makeEulerAngles() for _ in range(FNum)]#
         return FoList
     
     #Anai method for crack shape calculation
@@ -1741,7 +1799,7 @@ def ElementLife(n, ia0, ia, σ, τ_max,FieldValues,S_cyc_result, S_ai_result):
 #Life evaluation loop for single element----------------------------------------------Area Element---------------------------------------------------------------
 
         for Grain_i in range(int(fNum)):
-            τ1, θn1, θs1 = SlipPlane(FoList[0], σ)
+            τ1, θn1, θs1 = BasicParams.SlipPlane(FoList[0], σ)
             if τ1 > DataImport.σ_fF:
                 S_Δδ0, S_K0, S_asp0, S_RR0, S_σ0, S_c0, S_cyc0, ai, surfai = CrackLifeCalc(FList[Grain_i], FoList[Grain_i], y, z, Anai,FieldValues,S_cyc_result, S_ai_result)
 
@@ -1770,90 +1828,9 @@ def ElementLife(n, ia0, ia, σ, τ_max,FieldValues,S_cyc_result, S_ai_result):
 
 
 
-# -------------------------------------------------------------------------------------------------------------------------------------------            
-# ----------------------------------------------------------7. global functions---------------------------------------------------------------            
-# -------------------------------------------------------------------------------------------------------------------------------------------            
-global SlipPlane, π, makeCDF, makeCDFr, makeCDFrA, makeEulerAngles
-
-π = np.pi
-def SlipPlane(ang, DeltaSigma):
-    # ang: Euler angles of the grain
-    # DeltaSigma: stress tensor range
-
-    nv = np.array([[[1., 1., 0.], [1., -1., 1.], [-1., 1., 1.]],
-                [[1., -1., 0.], [1., 1., 1.], [-1., -1., 1.]],
-                [[1., 0., 1.], [1., 1., -1.], [-1., 1., 1.]],
-                [[-1., 0., 1.], [-1., 1., -1.], [1., 1., 1.]],
-                [[0., 1., 1.], [1., 1., -1.], [1., -1., 1.]],
-                [[0., 1., -1.], [1., 1., 1.], [1., -1., -1.]]])
-    C_Psi, C_Theta, C_Phi = np.cos(ang)
-    S_Psi, S_Theta, S_Phi = np.sin(ang)
-        
-    g_Psi_Theta_Phi = np.array([                            # Rotation matrix
-        [C_Psi*C_Theta*C_Phi - S_Psi*S_Phi, S_Psi*C_Theta*C_Phi + C_Psi*S_Phi, -S_Theta*C_Phi],
-        [-C_Psi*C_Theta*S_Phi - S_Psi*C_Phi, -S_Psi*C_Theta*S_Phi + C_Psi*C_Phi, S_Theta*S_Phi],
-        [C_Psi*S_Theta, S_Psi*S_Theta, C_Theta]
-        ])
-
-    nv2 = np.array([list(map(lambda x: g_Psi_Theta_Phi.dot(x), sublist)) for sublist in nv])# 
-
-    tau_list = []
-    for i in range(6):
-        for j in range(2):
-            tau = abs(np.dot(np.dot(nv2[i, 0], DeltaSigma), nv2[i, j + 1]))
-            tau_list.append((tau, i, j))
-    
-    tau_list.sort(key=lambda x: x[0], reverse=True)
-    i0, j0 = tau_list[0][1], tau_list[0][2]
-    
-    max_shear_stress = 1.0 / np.sqrt(6) * tau_list[0][0] 
-    max_principal_stress_dir = 1.0 / np.sqrt(2) * np.sign(nv2[i0, 0, 0]) * nv2[i0, 0]
-    max_theta_n = 1.0 / np.sqrt(3) * np.sign(nv2[i0, 0, 0]) * nv2[i0, j0 + 1]
-
-    return max_shear_stress, np.array(max_principal_stress_dir), np.array(max_theta_n)
-
-
-def makeCDF(DF): #  Definition of the function makeCDF to calculate the cumulative distribution function of particle size
-    CDF0 = np.cumsum(DF[:, 1])
-    CDF = CDF0 * 0.99999 + np.arange(len(DF)) / len(DF) * 0.00001
-    return interp1d(CDF, DF[:, 0], kind='linear', fill_value='extrapolate')
-
-def makeCDFr(DF): #  Definition of the function makeCDF to calculate the cumulative distribution function of particle size
-    CDF0 = np.cumsum(DF[:, 1])
-    CDF = CDF0 * 0.99999 + np.arange(len(DF)) / len(DF) * 0.00001
-    return interp1d(CDF, np.sqrt(π) / 2. * DF[:, 0], kind='linear', fill_value='extrapolate')
-
-def makeCDFrA(DF):
-    CDF0 = np.cumsum(DF[:, 1])
-    CDF = CDF0 * 0.99999 + np.arange(len(DF)) / len(DF) * 0.00001
-    RA = np.sqrt(DF[:, 0])
-    return interp1d(CDF, RA, kind='linear', fill_value='extrapolate')
-
-def makeEulerAngles():#
-    return ([random.uniform(0, 2 * π), math.acos(random.uniform(-1, 1)), random.uniform(0, 2 * π)])
-
-def stressAE(σ_nom, i,FieldValues):#Stress tensor of AREA ELEMENT at a specific stress
-    y = BasicParams.AeYZ[i, 0]#element y coordinate
-    z = BasicParams.AeYZ[i, 1]#element z coordinate
-    # Surface stress tensor definition
-    σ = np.array(FieldValues.FieldValues_ACTIVE_Numpy(0, y, z))
-    if np.isnan(σ[0]):
-        return []
-    else:
-        σ_11, σ_22, σ_33, τ_12, τ_13, τ_23 = σ.tolist()    
-        Δσ = np.array([[σ_11, τ_12, τ_13], [τ_12, σ_22, τ_23], [τ_13, τ_23, σ_33]])
-
-        eigenvalues = np.linalg.eigvals(Δσ)
-        τ_max = (max(eigenvalues) - min(eigenvalues)) / 2.0
-        return list([i, Δσ, τ_max])
-#Part7 End
-#
-#
-
-
 
 # -------------------------------------------------------------------------------------------------------------------------------------------            
-# ----------------------------------------------------------8. Execution of the model---------------------------------------------------------------            
+# ----------------------------------------------------------7. Execution of the model---------------------------------------------------------------            
 # -------------------------------------------------------------------------------------------------------------------------------------------            
 #1.import basic parameters
 BasicParams = BasicParameters() # Basic parameters
@@ -1873,8 +1850,24 @@ for load_quene in range(len(BasicParams.σ_nom)):
 
 #4. Run the main function
 def main(FieldValues, load_quene):
+    #----------------------------------------------sub_function__START------------------------------------------------
+    def stressAE(σ_nom, i,FieldValues):#Stress tensor of AREA ELEMENT at a specific stress
+        y = BasicParams.AeYZ[i, 0]#element y coordinate
+        z = BasicParams.AeYZ[i, 1]#element z coordinate
+        # Surface stress tensor definition
+        σ = np.array(FieldValues.FieldValues_ACTIVE_Numpy(0, y, z))
+        if np.isnan(σ[0]):
+            return []
+        else:
+            σ_11, σ_22, σ_33, τ_12, τ_13, τ_23 = σ.tolist()    
+            Δσ = np.array([[σ_11, τ_12, τ_13], [τ_12, σ_22, τ_23], [τ_13, τ_23, σ_33]])
 
-    # FatigueLife--------------------------------------------calculate stress for each AE--------------------------------------------------------
+            eigenvalues = np.linalg.eigvals(Δσ)
+            τ_max = (max(eigenvalues) - min(eigenvalues)) / 2.0
+            return list([i, Δσ, τ_max])
+    #----------------------------------------------sub_function__END------------------------------------------------
+        
+
     stressAE_list0 = [stressAE(BasicParams.σ_nom[load_quene], i, FieldValues) for i in range(BasicParams.AeNum)]
     stressAE_list1 = [sub_list for sub_list in stressAE_list0 if sub_list]
     iστ = sorted(stressAE_list1, key=lambda x: x[2], reverse=True)
@@ -1921,16 +1914,16 @@ def main(FieldValues, load_quene):
         for row in excel_data:
             row.append("YES" if row[1] == min_element_index + 1 else "  ")
         total_results.extend(excel_data)
-        print("  Nf=", S_cyc_result[-1], "   (y,z)=(", weak_S_yz[0], ",", weak_S_yz[1], ")  ", datetime.now())
+        print("  Nf=", S_cyc_result[-1], "   (y,z)=(", weak_S_yz[0], ",", weak_S_yz[1], ")  ", datetime.datetime.now())
     # save results to csv file
     eval_point_num=len(S_cyc_result)
     column_names =['Iteration'] + ['Element', 'Y', 'Z'] + [f'S_cyc_{i}' for i in range(1, eval_point_num + 1)] + ['minimum life']
     df = pd.DataFrame(total_results, columns=column_names)
-    excel_filename = f'results_{BasicParams.σ_nom[load_quene]}MPa.xlsx'
+    excel_filename = f'Results_{BasicParams.σ_nom[load_quene]}MPa.xlsx'
     df.to_excel(excel_filename, index=False)
 
 if __name__ == "__main__":
     for load_quene in range(len(BasicParams.σ_nom)):
-        print("load_quene : ",BasicParams.σ_nom[load_quene], datetime.now())
+        print("load_quene : ",BasicParams.σ_nom[load_quene], datetime.datetime.now())
         FieldValues=FieldValuesDict[load_quene]
         main(FieldValues,load_quene)
