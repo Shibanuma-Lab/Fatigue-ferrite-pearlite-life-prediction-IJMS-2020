@@ -27,4 +27,4 @@ This code predicts the fatigue life and limit of steels using microstructure inf
    * For example, if the Steel Type is B and the Test Type is Smooth, the directory name should be `B_Smooth`.
 2. Modify the values in the **class `BasicParameters`**.
 
-3. Execute `B_Smooth.py`. The fatigue life and crack location data will be exported to an output file named **Results_xxMPa.xlsx**. For extracting additional data evaluated during the simulation, slight modifications to `B_Smooth.py` may be necessary.
+3. Execute `MultiScale.py`. The fatigue life and crack location data will be exported to an output file named **Results_xxMPa.xlsx**. For extracting additional data evaluated during the simulation, slight modifications to `B_Smooth.py` may be necessary.
