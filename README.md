@@ -18,7 +18,7 @@ This code predicts the fatigue life and limit of steels using microstructure inf
    * Imports material parameters, such as microstructural information and tensile properties.
 4. **Create Field Value Function** (class: `FieldValuesFunction`)
    * Defines a FieldValues function to obtain model strain data.
-5. **Life Evaluation for Single Crack** (function: `CrackLifeCalc`)
+5. **Life Evaluation for Single Crack Initiation Site** (function: `CrackLifeCalc`)
 6. **Life Evaluation for Single Area Element** (function: `ElementLife`)
 7. **Execution of the Model**
 
