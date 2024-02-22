@@ -42,7 +42,7 @@ class BasicParameters:
         self.name = os.path.basename(os.getcwd()) # The name of the specimen
         self.steel = self.name.split("_")[:2][0] # The steel type of the specimen
         self.type = self.name.split("_")[:2][1] # The type of the test
-        self.σ_nom = np.arange(130,140,5)#Applied stress
+        self.σ_nom = np.arange(100,121,5)#Applied stress
         self.n_symm = 1 #Number of model calculations (typically 4 for 1/4 model)
         self.iteration_num = 1 #iteration times
 
@@ -51,12 +51,13 @@ class BasicParameters:
         self.r = -1 if self.type == "Smooth" else (0.09 if self.type in ["R008", "R100"] else (-1 if self.type == "CS" else None)) # SressRatio
         self.k_tr = 2 * 14 #Material constant for opening stress calculation
         self.gb_effect = 1 #Grain boundary effect type
-        self.remote_type = 1 #Remote stress conversion type
+        self.remote_type = 1
+         #Remote stress conversion type
 
         #life calculation
         self.c_paris = 1 #Paris'law coefficient
         self.n_paris = 2.0 #Paris'law exponent
-        self.Δδ_th = 0.000078 #threshold for crack-tip sliding displacement range
+        self.Δδ_th = 0.000145 #threshold for crack-tip sliding displacement range
 
         #specimen dimentions
         self.width = None # The width of the specimen
@@ -125,9 +126,9 @@ class BasicParameters:
         elif self.type == "R008":
             self.y_lim = 0.04
             self.z_lim = 2.5
-            self.grain_size_lim = 0.1
-            self.active_element_size = [0.025, 0.025]
-            self.stress_lim = 0.3
+            self.grain_size_lim = 0.2
+            self.active_element_size = [0.02, 0.05]
+            self.stress_lim = 0.2
         elif self.type == "CS":
             self.y_lim = 0.025
             self.z_lim = 0.75
@@ -978,9 +979,10 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
         def Wu(a, a0, rr0):
             if a == 0:
                 return 1
-            if a0 == 0:
+            elif a0 == 0:
                 return F2(a)**(-1/3)
-            return (F2(a) - (a0 / a)**3 * (F2(a0) - rr0**(-3)))**(-1/3)
+            else:
+                return (F2(a) - (a0 / a)**3 * (F2(a0) - rr0**(-3)))**(-1/3)
 
         def ff000(a):
             wu1 = Wu(a, r1 / BasicParams.thickness, r1 / rt1)
@@ -1036,6 +1038,7 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
         n1 = 0 #Last grain number containing the crack tip
 
         ff00 = getCrackAspectFunc(r1, rt1, Anai)
+
         while rnList[n] < 1.05 * BasicParams.thickness:
 
             rr = rnList[n] 
@@ -1054,38 +1057,49 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
 
                 if L2(ff00(rr0), rr0) < np.sum(tnList[m0:m02+1]):
                     nnn = 1
-
+                    if (m02 - 3 * nnn) < m0 & m0 == 1:
+                        print("11111")
                     while (m02 - 3 * nnn) >= m0:
-                        rr00 = rr + np.dot(dnList[m0 : m02 - 3 * nnn + 1], tnList[m0 : m02 - 3 * nnn + 1]) / (2 * np.sum(tnList[m0 : m02 - 3 * nnn + 1]))
-
-                        if L2(ff00(rr00), rr00) > np.sum(tnList[m0 : m02 - 3 * nnn+1]):
+                        dn_slice = dnList[m0:m02 - 3*nnn + 1]
+                        tn_slice = tnList[m0:m02 - 3*nnn + 1]
+                        if L2(ff00(rr + sum(dn_slice * tn_slice) / (2 * sum(tn_slice))), rr) < sum(tn_slice):
                             break
                         nnn += 1
                     gr = 1
-                
+
+
                 else:
                     nnn = 1
-                    rr00 = rr + np.dot(dnList[m0 : m02 + 3 * nnn + 1], tnList[m0 : m02 + 3 * nnn + 1]) / (2 * np.sum(tnList[m0 : m02 + 3 * nnn + 1]))
-                    while (m02 + 3 * nnn) <= DataImport.Ng and L2(ff00(rr00), rr00) > np.sum(tnList[m0:m02 + 3 * nnn+1]):
-                        nnn += 1  
-                        rr00 = rr + np.dot(dnList[m0 : m02 + 3 * nnn + 1], tnList[m0 : m02 + 3 * nnn + 1]) / (2 * np.sum(tnList[m0 : m02 + 3 * nnn + 1]))
+                    while (m02 + 3 * nnn) <= DataImport.Ng and \
+                        L2(ff00(rr + sum(dnList[m0:m02 + 3*nnn + 1] * tnList[m0:m02 + 3*nnn + 1]) / (2 * sum(tnList[m0:m02 + 3*nnn + 1]))), rr) > sum(tnList[m0:m02 + 3*nnn + 1]):
+                        nnn += 1
+                    if n==0 & nnn == 1:
+                        print("22222")
+
                     gr = 2
                 
             else:
                 rr0 = rr + np.dot(dnList[m0:m02+1], tnList[m0:m02+1]) / (2 * np.sum(tnList[m0:m02+1]))
 
-                if L2(ff00(0.9*BasicParams.thickness), rr0) < np.sum(tnList[m0 : m02+1]):
+                
+                if L2(ff00(BasicParams.thickness * 0.9), rr0) < np.sum(tnList[m0:m02+1]):
                     nnn = 1
-                    while (m02 - 3 * nnn+1) >= m0:
-                        if L2(ff00(0.9*BasicParams.thickness), rr + np.dot(dnList[m0:m02 - 3 * nnn+1], tnList[m0:m02 - 3 * nnn+1]) / (2 * np.sum(tnList[m0:m02 - 3 * nnn+1]))) > np.sum(tnList[m0:m02 - 3 * nnn+1]):
+                    while True:
+                        if m02 - 3 * nnn >= m0:
+                            rr_temp = rr + np.dot(dnList[m0:m02 - 3*nnn + 1], tnList[m0:m02 - 3*nnn + 1]) / (2 * np.sum(tnList[m0:m02 - 3*nnn + 1]))
+                            if L2(ff00(BasicParams.thickness * 0.9), rr_temp) < np.sum(tnList[m0:m02 - 3*nnn + 1]):
+                                break
+                        else:
                             break
                         nnn += 1
                     gr = 1
-
                 else:
                     nnn = 1
-                    while (m02 + 3 * nnn+1) <= DataImport.Ng and L2(ff00(0.9*BasicParams.thickness), rr + np.dot(dnList[m0:m02 + 3 * nnn+1], tnList[m0:m02 + 3 * nnn+1]) / (2 * np.sum(tnList[m0:m02 + 3 * nnn+1]))) > np.sum(tnList[m0:m02 + 3 * nnn+1]):
-                        nnn += 1
+                    while True:
+                        if (m02 + 3 * nnn <= DataImport.Ng) and (L2(ff00(BasicParams.thickness * 0.9), rr + np.dot(dnList[m0:m02 + 3*nnn + 1], tnList[m0:m02 + 3*nnn + 1]) / (2 * np.sum(tnList[m0:m02 + 3*nnn + 1]))) > np.sum(tnList[m0:m02 + 3*nnn + 1])):
+                            nnn += 1
+                        else:
+                            break
                     gr = 2
 
             n0 = n1 + 1
@@ -1100,8 +1114,9 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
             rnList[n + 1] = rnList[n] + np.dot(RnA[n + 1], dnList[n0:n1+1])
             k0, k1 = 1, 1
             Pn = [0] * (Nd[n] + Nd[n + 1] - 1)
-            Pn[0] = [0, 0]
+
             Pn[Nd[n] + Nd[n + 1] - 2] = [Nd[n], Nd[n + 1]]
+            Pn[0] = [0, 0]
 
             for j in range(1, Nd[n] + Nd[n + 1] - 1):
                 if RnAA[n][k0 - 1] < RnAA[n + 1][k1 - 1]:
@@ -1114,7 +1129,7 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
             RnAAS[n] = sorted(np.concatenate((RnAA[n] , RnAA[n + 1][:-1])))
             RnAS[n] = np.array(RnAAS[n]) - np.array([0] + RnAAS[n][:-1])
             n += 1
-
+        
         rnList = np.array(rnList[:n+1])
         Nd = np.array(Nd[:n+1])
 
@@ -1125,6 +1140,11 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
         RnAAS = RnAAS[:n]
         PnList = PnList[:n]
     
+
+
+
+
+
         return σ_f_List, rnList, Nd, PnList, RnAS, orList
 
 
@@ -1281,6 +1301,7 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
 
                     elif (jj + 1) + (m + 1) > len(Nd):
                         unstable = 1
+                        goto = 1
                         break
 
                     N0 += Nd[jj + m + 1]
@@ -1510,6 +1531,12 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
                 Δσ = (1-BasicParams.r)*np.array([[σ_11, τ_12, τ_13], [τ_12, σ_22, τ_23], [τ_13, τ_23, σ_33]])
                 K=0
 
+        if Δσ.any() == np.inf or Δσ.any() == np.nan:
+            print("σ_00:" ,σ_00)
+            print("σ_remote:",σ_remote)
+            print("K:",K)
+            print("σ_surf:",σ_surf)
+
         return asp, σ_remote, K, UU, Δσ        
 
 
@@ -1638,6 +1665,7 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
     r1, rt1 = get_r1_rt1()
     ff00 = getCrackAspectFunc(r1, rt1, Anai)
     σ_f_List, rnList, Nd, PnList, RnAS, orList = generateGrains(r1, rt1, ff00)
+
     ai, surfai, nai = get_EvalPoints(r1, rt1, rnList)
     
     # Information initialization under breaking conditions
@@ -1655,6 +1683,7 @@ def CrackLifeCalc(r0, or1, y, z, Anai, FieldValues,S_cyc_result, S_ai_result):
 
         # ----------------------------------------------------------eval σ_remote,CTSD------------------------------------------------------------
         asp, σ_remote, K, UU, Δσ = calc_σ(i, aii, rt1, y, z, ff00)
+
         cc, Δδ, unstable, goto = evalCTSD(aii, Δσ, σ_f_List, orList, rnList, Nd, PnList, RnAS)
 
         if goto == 1:
