@@ -9,6 +9,16 @@ This code predicts the fatigue life and limit of steels using microstructure inf
   * The following libraries are also required: `os`, `re`, `math`, `random`, `pickle`, `numpy`, `pandas`, `datetime`, and `scipy`. Install these libraries using the command:
     `pip install os re math random pickle numpy pandas datetime scipy`
 
+# Input Files Description
+* **B_Ferrite grain aspect ratio.csv**: Ferrite grain aspect ratio distribution for steel B.
+* **B_Ferrite grain size.csv**: Ferrite grain size distribution for steel B.
+* **B_Friction strength.csv**: Friction strength required to move dislocations for steel B.
+* **B_Monotonic tensile test.csv**: Static tensile properties for steel B.
+* **B_Pearlite thickness, C=0.18.csv**: Pearlite grain size distribution and carbon mass fraction for steel B.
+* **B_Smooth.inp**: Abaqus model information for specimen B_Smooth.
+* **B_Smooth.dat**: Abaqus calculation results for specimen B_Smooth.
+* **CombinedData_Ellipse_WF_CF.json**: Ellipse shape function.
+
 # Structure of the Code
 1. **Basic Information Import** (class: `BasicParameters`)
    * Defines model parameters including applied loads, Paris' law constants, model size, evaluation points, etc.
