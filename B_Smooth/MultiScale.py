@@ -51,7 +51,7 @@ class BasicParameters:
         self.r = -1 if self.type == "Smooth" else (0.09 if self.type in ["R008", "R100"] else (-1 if self.type == "CS" else None)) # SressRatio
         self.k_tr = 2 * 14 #Material constant for opening stress calculation
         self.gb_effect = 1 #Grain boundary effect type
-        self.remote_type = 1
+        self.remote_type = 2
          #Remote stress conversion type
 
         #life calculation
